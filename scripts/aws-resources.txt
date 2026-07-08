@@ -1,0 +1,11 @@
+@"
+ECR_URI: 806528484777.dkr.ecr.ap-south-1.amazonaws.com/gitsentry-bot
+ECR_REGISTRY: 806528484777.dkr.ecr.ap-south-1.amazonaws.com
+SQS_QUEUE_URL: https://sqs.ap-south-1.amazonaws.com/806528484777/gitsentry-jobs.fifo
+RDS_ENDPOINT: gitsentry-db.cxkk6ecau98w.ap-south-1.rds.amazonaws.com
+RDS_MASTER_USER: pacman
+RDS_DATABASE: gitsentry
+RDS_PASSWORD: pacman91
+RDS_SECURITY_GROUP: sg-047e62384071f1c39
+SECRET_ARN: arn:aws:secretsmanager:ap-south-1:806528484777:secret:gitsentry/secrets-AssKIA
+"@ | Out-File -FilePath scripts\aws-resources.txt -Encoding utf8
