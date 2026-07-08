@@ -5,7 +5,15 @@ const fs = require('fs');
 class GitHubAppAuth {
   constructor(appId, privateKeyPath) {
     this.appId = appId;
-    this.privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+    if (privateKeyPath) {
+      this.privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+    } else {
+      //AWS
+      this.privateKey = process.env.GITHUB_PRIVATE_KEY;
+      if (!this.privateKey) {
+        throw new Error('GitHub private key not found. Provide GITHUB_PRIVATE_KEY env or privateKeyPath.');
+      }
+    }
   }
 
   getJwt() {
