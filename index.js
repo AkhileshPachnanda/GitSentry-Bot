@@ -21,15 +21,37 @@ app.use(
 
 // Verify HMAC signature
 function verifySignature(req) {
-  const signature = req.headers["x-hub-signature-256"];
-  if (!signature) return false;
-  const expected =
-    "sha256=" +
-    crypto
-      .createHmac("sha256", process.env.WEBHOOK_SECRET)
-      .update(req.rawBody)
-      .digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  const signature = req.headers['x-hub-signature-256'];
+  console.log('🔍 Headers:', Object.keys(req.headers));
+  console.log('🔍 Signature header present?', !!signature);
+  if (!signature) {
+    console.log('❌ No signature header found');
+    return false;
+  }
+
+  // Log the secret (first few chars only)
+  const secret = process.env.WEBHOOK_SECRET;
+  console.log('🔍 Secret length:', secret ? secret.length : 0);
+  console.log('🔍 Secret first 5 chars:', secret ? secret.substring(0,5) : 'undefined');
+
+  // Log raw body presence and size
+  console.log('🔍 Raw body present?', !!req.rawBody);
+  console.log('🔍 Raw body size:', req.rawBody ? req.rawBody.length : 0);
+  if (req.rawBody) {
+    console.log('🔍 Raw body preview:', req.rawBody.substring(0, 100));
+  }
+
+  // Compute expected signature
+  const expected = 'sha256=' + crypto.createHmac('sha256', secret)
+                                      .update(req.rawBody || '')
+                                      .digest('hex');
+
+  console.log('🔑 Received signature (full):', signature);
+  console.log('🔑 Expected signature (full): ', expected);
+  const isValid = crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  console.log('🔑 Is valid?', isValid);
+
+  return isValid;
 }
 
 app.get("/", (req, res) => {
