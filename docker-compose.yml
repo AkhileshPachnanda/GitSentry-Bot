@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - WEBHOOK_SECRET=test_secret
+      - GITHUB_APP_ID=your_app_id
+      - SQS_QUEUE_URL=http://sqs:9324/queue/jobs
+    depends_on:
+      - sqs
+      - postgres
+  sqs:
+    image: softwaremill/elasticmq:latest
+    ports:
+      - "9324:9324"
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: gitsentry
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
