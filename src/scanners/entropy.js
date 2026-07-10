@@ -1,4 +1,4 @@
-const logger = require("../logger");
+const logger = require("../lib/logger");
 
 function calculateEntropy(str) {
   if (!str || str.length < 8) {

@@ -29,8 +29,8 @@ RUN npm ci --only=production
 COPY . .
 
 # ✅ Copy the built React dashboard from the builder stage
-COPY --from=builder /app/client/dist ./frontend/dist
+COPY --from=builder /app/client/dist ./client/dist
 
 EXPOSE 3000
 
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]

@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const { verifyWebhookSignature } = require("../security");
+const { verifyWebhookSignature } = require("../src/lib/security");
 
 test("verifies a valid GitHub webhook signature", () => {
   const secret = "super-secret";

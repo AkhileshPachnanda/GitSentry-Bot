@@ -1,7 +1,9 @@
 version: '3.8'
 services:
   app:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -14,7 +16,7 @@ services:
       - sqs
       - postgres
     volumes:
-      - ./frontend/dist:/app/frontend/dist  # Local dev: override with local build
+      - ../client/dist:/app/client/dist  # Local dev: override with local build
   sqs:
     image: softwaremill/elasticmq:latest
     ports:

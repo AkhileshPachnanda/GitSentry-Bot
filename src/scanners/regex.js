@@ -1,4 +1,4 @@
-const logger = require("../logger");
+const logger = require("../lib/logger");
 
 function scanForSecrets(diffContent) {
   if (!diffContent) {

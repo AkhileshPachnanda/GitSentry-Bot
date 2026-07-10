@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createMemoryStore } = require("../dashboardStore");
+const { createMemoryStore } = require("../src/dashboard/store");
 
 test("stores a scan and returns a summary", async () => {
   const store = createMemoryStore();

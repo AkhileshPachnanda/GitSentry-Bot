@@ -3,14 +3,14 @@ const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const { Octokit } = require("@octokit/rest");
-const GitHubAppAuth = require("./githubauth");
+const GitHubAppAuth = require("./lib/githubauth");
 const { scanForSecrets } = require("./scanners/regex");
 const { scanForEntropy } = require("./scanners/entropy");
 const { scanDependencies } = require("./scanners/dependency");
-const { verifyWebhookSignature } = require("./security");
-const logger = require("./logger");
+const { verifyWebhookSignature } = require("./lib/security");
+const logger = require("./lib/logger");
 const config = require("./config");
-const { createDashboardStore } = require("./dashboardStore");
+const { createDashboardStore } = require("./dashboard/store");
 require("dotenv").config();
 
 const app = express();
@@ -217,8 +217,8 @@ app.post("/api/webhook", async (req, res) => {
 // SERVE REACT DASHBOARD (NO WILDCARD ROUTE)
 // ============================================
 
-// 1. Serve static assets (JS, CSS, images) from frontend/dist
-app.use(express.static(path.join(__dirname, "frontend/dist")));
+// 1. Serve static assets (JS, CSS, images) from client/dist
+app.use(express.static(path.join(__dirname, "../client/dist")));
 
 // 2. Fallback: for any non-API, non-file request, serve index.html (React Router)
 // This avoids the need for the `*` wildcard route.
@@ -235,7 +235,7 @@ app.use((req, res, next) => {
   }
 
   // Otherwise, serve index.html for client-side routing
-  const indexPath = path.join(__dirname, "frontend/dist", "index.html");
+  const indexPath = path.join(__dirname, "../client/dist", "index.html");
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
