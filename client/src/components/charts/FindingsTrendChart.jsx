@@ -1,32 +1,35 @@
+import { useMemo } from 'react';
 import { useDashboardStore } from '../../stores/useDashboardStore';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function FindingsTrendChart() {
   const scans = useDashboardStore(state => state.scans);
   
-  // Aggregate findings by day (last 7 days)
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  
-  const dataMap = new Map();
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    dataMap.set(dateStr, { name: dateStr, findings: 0 });
-  }
-
-  scans.forEach(scan => {
-    const d = new Date(scan.created_at);
-    d.setHours(0,0,0,0);
-    const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    if (dataMap.has(dateStr)) {
-      const entry = dataMap.get(dateStr);
-      entry.findings += (scan.findings_count || 0);
+  const data = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    const dataMap = new Map();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      dataMap.set(dateStr, { name: dateStr, findings: 0 });
     }
-  });
 
-  const data = Array.from(dataMap.values());
+    scans.forEach(scan => {
+      const d = new Date(scan.created_at);
+      d.setHours(0,0,0,0);
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      if (dataMap.has(dateStr)) {
+        const entry = dataMap.get(dateStr);
+        entry.findings += (scan.findings_count || 0);
+      }
+    });
+
+    return Array.from(dataMap.values());
+  }, [scans]);
+
   const hasData = data.some(d => d.findings > 0);
 
   return (

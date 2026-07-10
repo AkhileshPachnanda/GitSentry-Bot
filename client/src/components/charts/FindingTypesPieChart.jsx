@@ -1,8 +1,19 @@
-import { useDashboardStore, selectFindingsByType } from '../../stores/useDashboardStore';
+import { useMemo } from 'react';
+import { useDashboardStore } from '../../stores/useDashboardStore';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 export default function FindingTypesPieChart() {
-  const data = useDashboardStore(selectFindingsByType);
+  const findings = useDashboardStore(state => state.findings);
+  
+  const data = useMemo(() => {
+    const secrets = findings.filter(f => f.category === 'secret').length;
+    const dependencies = findings.filter(f => f.category === 'dependency').length;
+    return [
+      { name: 'Secrets', value: secrets, fill: 'var(--accent-orange)' },
+      { name: 'Dependencies', value: dependencies, fill: 'var(--accent-purple)' }
+    ];
+  }, [findings]);
+
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (

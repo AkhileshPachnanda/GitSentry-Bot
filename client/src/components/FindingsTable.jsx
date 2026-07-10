@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useDashboardStore, selectFilteredFindings } from '../stores/useDashboardStore';
+import { useState, useMemo } from 'react';
+import { useDashboardStore } from '../stores/useDashboardStore';
 import { AlertTriangle, Copy, CheckCircle2, ArrowUpDown } from 'lucide-react';
 import FilterBar from './FilterBar';
 
@@ -27,9 +27,22 @@ const SeverityBadge = ({ severity }) => {
 };
 
 export default function FindingsTable() {
-  const filteredFindings = useDashboardStore(selectFilteredFindings);
+  const findings = useDashboardStore(state => state.findings);
+  const filters = useDashboardStore(state => state.filters);
   const [copiedId, setCopiedId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
+
+  const filteredFindings = useMemo(() => {
+    return findings.filter(f => {
+      if (filters.type !== 'all' && f.category !== filters.type) return false;
+      if (filters.severity.length > 0 && !filters.severity.includes(f.severity?.toLowerCase())) return false;
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        return f.file?.toLowerCase().includes(q) || f.type?.toLowerCase().includes(q) || f.content?.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [findings, filters]);
 
   const handleCopy = (id, text) => {
     navigator.clipboard.writeText(text);

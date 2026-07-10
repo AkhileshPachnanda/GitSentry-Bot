@@ -1,8 +1,24 @@
-import { useDashboardStore, selectFindingsBySeverity } from '../../stores/useDashboardStore';
+import { useMemo } from 'react';
+import { useDashboardStore } from '../../stores/useDashboardStore';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function SeverityBreakdownChart() {
-  const data = useDashboardStore(selectFindingsBySeverity);
+  const findings = useDashboardStore(state => state.findings);
+  
+  const data = useMemo(() => {
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    findings.forEach(f => {
+      const sev = f.severity?.toLowerCase() || 'low';
+      if (counts[sev] !== undefined) counts[sev]++;
+    });
+    return [
+      { name: 'Critical', value: counts.critical, fill: 'var(--accent-red)' },
+      { name: 'High', value: counts.high, fill: 'var(--accent-orange)' },
+      { name: 'Medium', value: counts.medium, fill: 'var(--accent-yellow)' },
+      { name: 'Low', value: counts.low, fill: 'var(--accent-green)' },
+    ];
+  }, [findings]);
+
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   return (
