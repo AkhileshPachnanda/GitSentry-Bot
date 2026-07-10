@@ -1,4 +1,6 @@
+const path = require("path");
 const express = require("express");
+const cors = require("cors");
 const { Octokit } = require("@octokit/rest");
 const GitHubAppAuth = require("./githubauth");
 const { scanForSecrets } = require("./scanners/regex");
@@ -7,11 +9,14 @@ const { scanDependencies } = require("./scanners/dependency");
 const { verifyWebhookSignature } = require("./security");
 const logger = require("./logger");
 const config = require("./config");
+const { createDashboardStore } = require("./dashboardStore");
 require("dotenv").config();
 
 const app = express();
 const PORT = config.port;
+const dashboardStore = createDashboardStore();
 
+app.use(cors());
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -70,6 +75,36 @@ app.get("/", (req, res) => {
 
 app.get("/healthz", (req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+app.get("/api/dashboard/summary", async (req, res) => {
+  try {
+    const summary = await dashboardStore.getDashboardSummary();
+    res.status(200).json(summary);
+  } catch (error) {
+    logger.error("Failed to load dashboard summary", error.message);
+    res.status(500).json({ error: "Failed to load dashboard summary" });
+  }
+});
+
+app.get("/api/dashboard/scans", async (req, res) => {
+  try {
+    const scans = await dashboardStore.getRecentScans();
+    res.status(200).json(scans);
+  } catch (error) {
+    logger.error("Failed to load scan history", error.message);
+    res.status(500).json({ error: "Failed to load scan history" });
+  }
+});
+
+app.get("/api/dashboard/findings", async (req, res) => {
+  try {
+    const findings = await dashboardStore.getRecentFindings();
+    res.status(200).json(findings);
+  } catch (error) {
+    logger.error("Failed to load recent findings", error.message);
+    res.status(500).json({ error: "Failed to load recent findings" });
+  }
 });
 
 app.post("/api/webhook", async (req, res) => {
@@ -162,11 +197,29 @@ app.post("/api/webhook", async (req, res) => {
       });
     }
 
+    await dashboardStore.saveScanResult({
+      repository: repo.full_name,
+      pullRequest: pr.number,
+      status: allFindings.length > 0 ? "findings" : "clean",
+      findingsCount: allFindings.length,
+      findings: allFindings,
+    });
+
     return res.status(200).json({ status: "ok", findings: allFindings.length });
   } catch (error) {
     logger.error("Failed to process pull request", error.message);
     return res.status(500).json({ error: "Internal error" });
   }
+});
+
+app.use(express.static(path.join(__dirname, "client", "dist")));
+
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    return next();
+  }
+
+  res.sendFile(path.join(__dirname, "client", "dist", "index.html"));
 });
 
 app.use((err, req, res, next) => {
