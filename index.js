@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const express = require("express");
 const cors = require("cors");
@@ -68,6 +69,10 @@ function buildReviewComment(findings) {
   commentBody += "---\n⚠️ Please resolve these findings before merging.";
   return commentBody;
 }
+
+// ============================================
+// API ROUTES (Must come BEFORE static fallback)
+// ============================================
 
 app.get("/", (req, res) => {
   res.status(200).json({ service: "GitSentry", status: "running" });
@@ -212,16 +217,30 @@ app.post("/api/webhook", async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, "client", "dist")));
+// ============================================
+// SERVE REACT DASHBOARD (AFTER API ROUTES)
+// ============================================
 
-app.get("*", (req, res, next) => {
+// Serve static files from frontend/dist
+app.use(express.static(path.join(__dirname, "frontend/dist")));
+
+// For any non-API route, serve index.html (React Router support)
+app.get("*", (req, res) => {
+  // Skip API routes (should have been caught already, but just in case)
   if (req.path.startsWith("/api/")) {
-    return next();
+    return res.status(404).json({ error: "API endpoint not found" });
   }
 
-  res.sendFile(path.join(__dirname, "client", "dist", "index.html"));
+  const indexPath = path.join(__dirname, "frontend/dist", "index.html");
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    logger.warn("Dashboard index.html not found at:", indexPath);
+    res.status(404).json({ error: "Dashboard not built. Run `npm run build` first." });
+  }
 });
 
+// Error handler
 app.use((err, req, res, next) => {
   logger.error("Unhandled server error", err.message);
   res.status(500).json({ error: "Internal server error" });
