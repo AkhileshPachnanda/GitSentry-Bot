@@ -1,5 +1,10 @@
 # GitSentry Bot
 
+[![Deploy to ECS](https://github.com/AkhileshPachnanda/GitSentry-Bot/actions/workflows/deploy.yml/badge.svg)](https://github.com/AkhileshPachnanda/GitSentry-Bot/actions/workflows/deploy.yml)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen?logo=node.js)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A GitHub App that automatically scans pull requests for exposed secrets, high-entropy credentials, and known-vulnerable dependencies — posting findings directly as a PR review comment before code is merged.
 
 ---
@@ -48,7 +53,7 @@ Persist to Postgres / in-memory store ──► Dashboard API ──► React da
 
 All three scanners operate only on **added lines** (`+` prefixed) in the PR diff — unchanged and removed code is not flagged.
 
-### 1. Regex Scanner (`scanners/regex.js`)
+### 1. Regex Scanner (`src/scanners/regex.js`)
 Pattern-matches known credential formats against each added line:
 
 | Pattern | Detects |
@@ -60,22 +65,23 @@ Pattern-matches known credential formats against each added line:
 | `AIza[0-9A-Za-z\-_]{35}` | Google API Key |
 | `-----BEGIN OPENSSH PRIVATE KEY-----` | SSH Private Key |
 
-### 2. Entropy Scanner (`scanners/entropy.js`)
+### 2. Entropy Scanner (`src/scanners/entropy.js`)
 Catches credentials that don't match a known format (custom tokens, random API keys) by computing Shannon entropy on quoted string literals:
 
 - Only evaluates lines that look like an assignment (`key =`, `key:`, or containing `key/secret/token/password/credential/private/api`)
 - Extracts quoted strings ≥ 20 characters
 - Flags any string with entropy > **4.0 bits/character** as a potential secret
 
-### 3. Dependency Scanner (`scanners/dependency.js`)
+### 3. Dependency Scanner (`src/scanners/dependency.js`)
 Cross-references `package.json` changes in the PR against a maintained table of known-vulnerable packages (e.g. `lodash < 4.17.21` → CVE-2020-8203 prototype pollution, `express < 4.17.3` → CVE-2022-24999), returning severity, CVE ID, and affected version range for each match.
 
 
 ## Security Design
 
-- **Webhook signature verification** uses HMAC-SHA256 over the raw request body, compared with `crypto.timingSafeEqual` to prevent timing attacks (`security.js`)
+- **Webhook signature verification** uses HMAC-SHA256 over the raw request body, compared with `crypto.timingSafeEqual` to prevent timing attacks (`src/lib/security.js`)
 - **GitHub App authentication** uses short-lived JWTs (RS256, 10-minute expiry) exchanged for scoped installation access tokens per request — no long-lived PAT is ever used
 - Covered by unit tests in `tests/security.test.js` (valid signature acceptance, invalid signature rejection, malformed payload handling)
+- See [SECURITY.md](SECURITY.md) for the full threat model.
 
 ## API Reference
 
@@ -135,7 +141,16 @@ npm test               # runs the node:test suite
 
 ### Deploy
 
-The included `Dockerfile` and `docker-compose.yml` containerize the backend (with the dashboard build served statically). `.github/workflows/deploy.yml` builds the image, pushes to Amazon ECR, and forces a new ECS service deployment on every push to `main`.
+The included `docker/Dockerfile` and `docker/docker-compose.yml` containerize the backend (with the dashboard build served statically). `.github/workflows/deploy.yml` builds the image, pushes to Amazon ECR, and forces a new ECS service deployment on every push to `main`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, how to add new scanner patterns, coding standards, commit conventions, and testing guidelines.
+
+## Docs
+
+- [Architecture](docs/ARCHITECTURE.md) — component diagram, data flows, design decisions
+- [Security](SECURITY.md) — threat model, secret handling, disclosure policy
 
 ## Roadmap
 

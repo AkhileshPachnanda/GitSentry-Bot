@@ -1,5 +1,18 @@
 const { Pool } = require('pg');
 
+/**
+ * Creates a dashboard store that abstracts over PostgreSQL and an in-memory
+ * fallback.
+ *
+ * When `DATABASE_URL` is set in the environment a `pg.Pool` is lazily
+ * initialised on the first query. When it is absent all write operations
+ * are no-ops and all read operations return empty arrays, so the webhook
+ * processor continues to work without any database infrastructure.
+ *
+ * @returns {{ getDashboardSummary: Function, getRecentScans: Function,
+ *             getRecentFindings: Function, saveScanResult: Function,
+ *             closePool: Function }} The store API.
+ */
 function createDashboardStore() {
   let pool = null;
 
@@ -37,6 +50,10 @@ function createDashboardStore() {
 
   // ─── Dashboard Store Functions ──────────────────────────────
 
+  /**
+   * Returns aggregate scan metrics.
+   * @returns {Promise<{totalScans: number}>}
+   */
   async function getDashboardSummary() {
     const result = await query('SELECT COUNT(*) as total FROM scans');
     return {
@@ -44,6 +61,11 @@ function createDashboardStore() {
     };
   }
 
+  /**
+   * Returns the most recent scans in descending chronological order.
+   * @param {number} [limit=10] - Maximum number of records to return.
+   * @returns {Promise<object[]>}
+   */
   async function getRecentScans(limit = 10) {
     const result = await query(
       'SELECT * FROM scans ORDER BY created_at DESC LIMIT $1',
@@ -52,6 +74,11 @@ function createDashboardStore() {
     return result.rows;
   }
 
+  /**
+   * Returns the most recent findings in descending chronological order.
+   * @param {number} [limit=20] - Maximum number of records to return.
+   * @returns {Promise<object[]>}
+   */
   async function getRecentFindings(limit = 20) {
     const result = await query(
       'SELECT * FROM findings ORDER BY created_at DESC LIMIT $1',
@@ -60,6 +87,16 @@ function createDashboardStore() {
     return result.rows;
   }
 
+  /**
+   * Atomically persists a completed scan and all of its findings.
+   *
+   * Wraps the inserts in a database transaction — if any finding insert
+   * fails the entire scan record is rolled back.
+   *
+   * @param {{ repository: string, pullRequest: number, status: string,
+   *           findingsCount: number, findings: object[] }} scanData
+   * @returns {Promise<void>}
+   */
   async function saveScanResult(scanData) {
     const { repository, pullRequest, status, findingsCount, findings } = scanData;
     const client = getPool();

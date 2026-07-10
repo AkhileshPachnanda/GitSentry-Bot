@@ -1,5 +1,12 @@
 const logger = require("../lib/logger");
 
+/**
+ * Computes the Shannon entropy of a string in bits per character.
+ *
+ * @param {string} str - Input string. Returns 0 for strings shorter than 8 chars.
+ * @returns {number} Entropy value in bits/character. Higher values indicate
+ *   more randomness (typical secrets score > 4.0).
+ */
 function calculateEntropy(str) {
   if (!str || str.length < 8) {
     return 0;
@@ -20,6 +27,21 @@ function calculateEntropy(str) {
   return entropy;
 }
 
+/**
+ * Scans a unified diff for high-entropy string literals that may be secrets.
+ *
+ * Only evaluates added lines (`+` prefix) that look like an assignment
+ * (contain `=`, `:`, or keywords such as `key`, `secret`, `token`, `password`,
+ * `credential`, `private`, `api`). Quoted strings ≥ 20 characters are
+ * extracted and scored; anything above 4.0 bits/character is flagged.
+ *
+ * This catches credentials that don't match a known format — random API keys,
+ * custom tokens, base64-encoded secrets, etc.
+ *
+ * @param {string} diffContent - Raw unified diff text from the GitHub API.
+ * @returns {import('../index').Finding[]} Array of high-entropy findings.
+ *   Empty array if no suspicious strings are detected or input is falsy.
+ */
 function scanForEntropy(diffContent) {
   if (!diffContent) {
     return [];

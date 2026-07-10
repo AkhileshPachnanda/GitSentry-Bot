@@ -1,5 +1,16 @@
 const logger = require("../lib/logger");
 
+/**
+ * Scans a unified diff for known secret patterns using regular expressions.
+ *
+ * Only evaluates lines that are additions in the diff (prefixed with `+`).
+ * Diff header lines (`+++`) are skipped. Each pattern is matched globally
+ * so multiple occurrences on a single line are all reported.
+ *
+ * @param {string} diffContent - Raw unified diff text from the GitHub API.
+ * @returns {import('../index').Finding[]} Array of findings, one per matched
+ *   secret. Empty array if no secrets are detected or input is falsy.
+ */
 function scanForSecrets(diffContent) {
   if (!diffContent) {
     return [];
