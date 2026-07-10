@@ -1,34 +1,32 @@
+# ─── Stage 1: Build the React Dashboard ──────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy the React source code (client folder)
+COPY client/ ./client/
 
-# Install dependencies (including dev dependencies needed for build)
-RUN npm ci
+# Install dependencies and build the React app
+WORKDIR /app/client
+RUN npm install
+RUN npm run build
 
-# Copy all source code (including frontend)
-COPY . .
-
-# Build the React dashboard (if you have a build script)
-# If you already have frontend/dist committed, you can skip this step
-RUN cd frontend && npm install && npm run build
-
-# ─── Production Stage ──────────────────────────────────
+# ─── Stage 2: Production Backend ──────────────────────
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy only production dependencies
+# Copy backend package files and install production dependencies
 COPY package*.json ./
 RUN npm ci --only=production
 
 # Copy backend source code
 COPY . .
 
-# ✅ CRITICAL: Copy the built React dashboard from the builder stage
-COPY --from=builder /app/frontend/dist ./frontend/dist
+# ✅ Copy the built React dashboard from the builder stage
+#    The build output is in /app/client/dist
+#    We copy it to /app/frontend/dist (where index.js expects it)
+COPY --from=builder /app/client/dist ./frontend/dist
 
 EXPOSE 3000
 
