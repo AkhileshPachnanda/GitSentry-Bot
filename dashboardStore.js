@@ -1,199 +1,106 @@
-const { Client } = require("pg");
+const { Pool } = require('pg');
 
-class MemoryDashboardStore {
-  constructor() {
-    this.scans = [];
-    this.findings = [];
-  }
+let pool = null;
 
-  async saveScanResult({
-    repository,
-    pullRequest,
-    status,
-    findingsCount,
-    findings = [],
-  }) {
-    const scan = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      repository,
-      pullRequest,
-      status,
-      findingsCount,
-      scannedAt: new Date().toISOString(),
-    };
-
-    this.scans.unshift(scan);
-    this.findings.push(
-      ...findings.map((finding, index) => ({
-        id: `${scan.id}-${index}`,
-        scanId: scan.id,
-        type: finding.type,
-        severity: finding.severity || "unknown",
-        title: finding.title || finding.type,
-        file: finding.file || "unknown",
-      })),
-    );
-
-    return scan;
-  }
-
-  async getDashboardSummary() {
-    const repositories = new Set(this.scans.map((scan) => scan.repository));
-    const totalFindings = this.findings.length;
-    const recentStatus = this.scans[0]?.status || "idle";
-
-    return {
-      totalScans: this.scans.length,
-      totalFindings,
-      repositories: repositories.size,
-      latestStatus: recentStatus,
-    };
-  }
-
-  async getRecentScans(limit = 10) {
-    return this.scans.slice(0, limit).map((scan) => ({
-      ...scan,
-      findingCount: this.findings.filter(
-        (finding) => finding.scanId === scan.id,
-      ).length,
-    }));
-  }
-
-  async getRecentFindings(limit = 10) {
-    return this.findings.slice(-limit).reverse();
-  }
-}
-
-class PostgresDashboardStore {
-  constructor(connectionString) {
-    this.client = new Client({ connectionString });
-  }
-
-  async connect() {
-    if (!this.client._connected) {
-      await this.client.connect();
-      this.client._connected = true;
+function getPool() {
+  if (!pool) {
+    const connectionString = process.env.DATABASE_URL;
+    if (connectionString) {
+      pool = new Pool({
+        connectionString,
+        max: 10,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      });
+      console.log('✅ PostgreSQL pool created');
+    } else {
+      console.warn('⚠️ DATABASE_URL not set, using in-memory store');
     }
   }
+  return pool;
+}
 
-  async ensureSchema() {
-    await this.connect();
-    await this.client.query(`
-      CREATE TABLE IF NOT EXISTS scans (
-        id TEXT PRIMARY KEY,
-        repository TEXT NOT NULL,
-        pull_request INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        findings_count INTEGER NOT NULL,
-        scanned_at TIMESTAMP NOT NULL DEFAULT NOW()
-      );
-    `);
-    await this.client.query(`
-      CREATE TABLE IF NOT EXISTS findings (
-        id TEXT PRIMARY KEY,
-        scan_id TEXT NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
-        type TEXT NOT NULL,
-        severity TEXT NOT NULL,
-        title TEXT NOT NULL,
-        file TEXT NOT NULL
-      );
-    `);
+async function query(text, params) {
+  const client = getPool();
+  if (!client) {
+    return { rows: [] };
   }
+  try {
+    const res = await client.query(text, params);
+    return res;
+  } catch (err) {
+    console.error('Database query error:', err);
+    throw err;
+  }
+}
 
-  async saveScanResult({
-    repository,
-    pullRequest,
-    status,
-    findingsCount,
-    findings = [],
-  }) {
-    await this.ensureSchema();
-    const scanId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    await this.client.query(
-      "INSERT INTO scans (id, repository, pull_request, status, findings_count) VALUES ($1, $2, $3, $4, $5)",
-      [scanId, repository, pullRequest, status, findingsCount],
+// ─── Dashboard Store Functions ──────────────────────────────
+
+async function getDashboardSummary() {
+  const result = await query('SELECT COUNT(*) as total FROM scans');
+  return {
+    totalScans: result.rows[0]?.total || 0,
+  };
+}
+
+async function getRecentScans(limit = 10) {
+  const result = await query(
+    'SELECT * FROM scans ORDER BY created_at DESC LIMIT $1',
+    [limit]
+  );
+  return result.rows;
+}
+
+async function getRecentFindings(limit = 20) {
+  const result = await query(
+    'SELECT * FROM findings ORDER BY created_at DESC LIMIT $1',
+    [limit]
+  );
+  return result.rows;
+}
+
+async function saveScanResult(scanData) {
+  const { repository, pullRequest, status, findingsCount, findings } = scanData;
+  const client = getPool();
+  if (!client) {
+    console.log('In-memory save (no DB)');
+    return;
+  }
+  
+  const dbClient = await client.connect();
+  try {
+    await dbClient.query('BEGIN');
+    const scanResult = await dbClient.query(
+      `INSERT INTO scans (repository, pull_request, status, findings_count)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [repository, pullRequest, status, findingsCount]
     );
-
-    for (const [index, finding] of findings.entries()) {
-      const findingId = `${scanId}-${index}`;
-      await this.client.query(
-        "INSERT INTO findings (id, scan_id, type, severity, title, file) VALUES ($1, $2, $3, $4, $5, $6)",
-        [
-          findingId,
-          scanId,
-          finding.type,
-          finding.severity || "unknown",
-          finding.title || finding.type,
-          finding.file || "unknown",
-        ],
+    const scanId = scanResult.rows[0].id;
+    for (const finding of findings) {
+      await dbClient.query(
+        `INSERT INTO findings (scan_id, type, severity, file, line, content, cve)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [scanId, finding.type, finding.severity, finding.file, finding.line, finding.content, finding.cve]
       );
     }
-
-    return {
-      id: scanId,
-      repository,
-      pullRequest,
-      status,
-      findingsCount,
-      scannedAt: new Date().toISOString(),
-    };
+    await dbClient.query('COMMIT');
+  } catch (err) {
+    await dbClient.query('ROLLBACK');
+    throw err;
+  } finally {
+    dbClient.release();
   }
-
-  async getDashboardSummary() {
-    await this.ensureSchema();
-    const [{ total_scans, total_findings, repositories }] = await this.client
-      .query(`
-      SELECT
-        COUNT(*)::int AS total_scans,
-        (SELECT COUNT(*)::int FROM findings) AS total_findings,
-        (SELECT COUNT(DISTINCT repository)::int FROM scans) AS repositories
-      FROM scans
-    `);
-
-    const latestResult = await this.client.query(
-      "SELECT status FROM scans ORDER BY scanned_at DESC LIMIT 1",
-    );
-
-    return {
-      totalScans: Number(total_scans),
-      totalFindings: Number(total_findings),
-      repositories: Number(repositories),
-      latestStatus: latestResult.rows[0]?.status || "idle",
-    };
-  }
-
-  async getRecentScans(limit = 10) {
-    await this.ensureSchema();
-    const result = await this.client.query(
-      'SELECT id, repository, pull_request AS "pullRequest", status, findings_count AS "findingsCount", scanned_at AS "scannedAt" FROM scans ORDER BY scanned_at DESC LIMIT $1',
-      [limit],
-    );
-    return result.rows;
-  }
-
-  async getRecentFindings(limit = 10) {
-    await this.ensureSchema();
-    const result = await this.client.query(
-      'SELECT id, scan_id AS "scanId", type, severity, title, file FROM findings ORDER BY id DESC LIMIT $1',
-      [limit],
-    );
-    return result.rows;
-  }
-}
-
-function createDashboardStore(connectionString = process.env.DATABASE_URL) {
-  if (connectionString) {
-    return new PostgresDashboardStore(connectionString);
-  }
-
-  return createMemoryStore();
-}
-
-function createMemoryStore() {
-  return new MemoryDashboardStore();
 }
 
 module.exports = {
-  createDashboardStore,
-  createMemoryStore,
+  getDashboardSummary,
+  getRecentScans,
+  getRecentFindings,
+  saveScanResult,
+  closePool: async () => {
+    if (pool) {
+      await pool.end();
+      pool = null;
+    }
+  }
 };
