@@ -71,12 +71,8 @@ function buildReviewComment(findings) {
 }
 
 // ============================================
-// API ROUTES (Must come BEFORE static fallback)
+// HEALTH & API ROUTES
 // ============================================
-
-app.get("/", (req, res) => {
-  res.status(200).json({ service: "GitSentry", status: "running" });
-});
 
 app.get("/healthz", (req, res) => {
   res.status(200).json({ status: "ok" });
@@ -218,25 +214,32 @@ app.post("/api/webhook", async (req, res) => {
 });
 
 // ============================================
-// SERVE REACT DASHBOARD (AFTER API ROUTES)
+// SERVE REACT DASHBOARD (NO WILDCARD ROUTE)
 // ============================================
 
-// Serve static files from frontend/dist
+// 1. Serve static assets (JS, CSS, images) from frontend/dist
 app.use(express.static(path.join(__dirname, "frontend/dist")));
 
-// For any non-API route, serve index.html (React Router support)
-app.get("*", (req, res) => {
-  // Skip API routes (should have been caught already, but just in case)
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).json({ error: "API endpoint not found" });
+// 2. Fallback: for any non-API, non-file request, serve index.html (React Router)
+// This avoids the need for the `*` wildcard route.
+app.use((req, res, next) => {
+  // Skip API routes (already handled above) and health check
+  if (req.path.startsWith("/api/") || req.path === "/healthz") {
+    return next();
   }
 
+  // If the request has a file extension (like .js, .css, .png), it's a static asset
+  // which would have already been handled by express.static, so skip.
+  if (path.extname(req.path) !== "") {
+    return next();
+  }
+
+  // Otherwise, serve index.html for client-side routing
   const indexPath = path.join(__dirname, "frontend/dist", "index.html");
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    logger.warn("Dashboard index.html not found at:", indexPath);
-    res.status(404).json({ error: "Dashboard not built. Run `npm run build` first." });
+    res.status(404).json({ error: "Dashboard not built" });
   }
 });
 
