@@ -6,9 +6,14 @@ WORKDIR /app
 # Copy the React source code (client folder)
 COPY client/ ./client/
 
-# Install dependencies and build the React app
+# Install dependencies
 WORKDIR /app/client
 RUN npm install
+
+# 🔧 Fix: Ensure vite binary is executable
+RUN chmod +x node_modules/.bin/vite
+
+# Build the React app
 RUN npm run build
 
 # ─── Stage 2: Production Backend ──────────────────────
@@ -24,8 +29,6 @@ RUN npm ci --only=production
 COPY . .
 
 # ✅ Copy the built React dashboard from the builder stage
-#    The build output is in /app/client/dist
-#    We copy it to /app/frontend/dist (where index.js expects it)
 COPY --from=builder /app/client/dist ./frontend/dist
 
 EXPOSE 3000
