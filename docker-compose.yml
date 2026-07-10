@@ -8,10 +8,13 @@ services:
       - NODE_ENV=production
       - WEBHOOK_SECRET=test_secret
       - GITHUB_APP_ID=your_app_id
+      - DATABASE_URL=postgresql://admin:secret@postgres:5432/gitsentry
       - SQS_QUEUE_URL=http://sqs:9324/queue/jobs
     depends_on:
       - sqs
       - postgres
+    volumes:
+      - ./frontend/dist:/app/frontend/dist  # Local dev: override with local build
   sqs:
     image: softwaremill/elasticmq:latest
     ports:
@@ -24,3 +27,8 @@ services:
       POSTGRES_PASSWORD: secret
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
