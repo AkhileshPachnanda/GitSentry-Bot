@@ -1,16 +1,17 @@
 const express = require("express");
-const crypto = require("crypto");
 const { Octokit } = require("@octokit/rest");
 const GitHubAppAuth = require("./githubauth");
 const { scanForSecrets } = require("./scanners/regex");
 const { scanForEntropy } = require("./scanners/entropy");
 const { scanDependencies } = require("./scanners/dependency");
+const { verifyWebhookSignature } = require("./security");
+const logger = require("./logger");
+const config = require("./config");
 require("dotenv").config();
 
 const app = express();
-const PORT = 3000;
+const PORT = config.port;
 
-// Raw body parser for signature verification
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -19,65 +20,111 @@ app.use(
   }),
 );
 
-// Verify HMAC signature
-function verifySignature(req) {
-  const signature = req.headers["x-hub-signature-256"];
-  if (!signature) return false;
-  const expected =
-    "sha256=" +
-    crypto
-      .createHmac("sha256", process.env.WEBHOOK_SECRET)
-      .update(req.rawBody)
-      .digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+function buildReviewComment(findings) {
+  const secretFindings = findings.filter(
+    (finding) => finding.category === "secret",
+  );
+  const dependencyFindings = findings.filter(
+    (finding) => finding.category === "dependency",
+  );
+
+  let commentBody = "## GitSentry Security Findings\n\n";
+
+  if (secretFindings.length > 0) {
+    commentBody += "### Secrets Detected\n\n";
+    secretFindings.forEach((finding, index) => {
+      commentBody += `**${index + 1}. ${finding.type}** (Line ${finding.line} in \`${finding.file || "unknown"}\`)\n`;
+      const snippet = finding.content ? finding.content.substring(0, 100) : "";
+      commentBody += `\`${snippet}${snippet.length === 100 ? "..." : ""}\`\n\n`;
+    });
+  }
+
+  if (dependencyFindings.length > 0) {
+    commentBody += "### Vulnerable Dependencies\n\n";
+    dependencyFindings.forEach((finding) => {
+      const severityEmoji =
+        finding.severity === "critical" || finding.severity === "high"
+          ? "🔴"
+          : finding.severity === "medium"
+            ? "🟡"
+            : "🟢";
+      commentBody += `${severityEmoji} **${finding.package}** (${finding.severity})\n`;
+      commentBody += `   - ${finding.title}\n`;
+      if (finding.cve && finding.cve !== "N/A") {
+        commentBody += `   - CVE: ${finding.cve}\n`;
+      }
+      if (finding.vulnerable_versions) {
+        commentBody += `   - Affected: ${finding.vulnerable_versions}\n`;
+      }
+      commentBody += `   - File: \`${finding.file || "unknown"}\`\n\n`;
+    });
+  }
+
+  commentBody += "---\n⚠️ Please resolve these findings before merging.";
+  return commentBody;
 }
 
 app.get("/", (req, res) => {
-  res.send("GitSentry server is running");
+  res.status(200).json({ service: "GitSentry", status: "running" });
+});
+
+app.get("/healthz", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 
 app.post("/api/webhook", async (req, res) => {
-  console.log("Webhook received");
-
-  if (!verifySignature(req)) {
-    console.error("Invalid signature");
-    return res.status(401).send("Invalid signature");
+  if (!verifyWebhookSignature(req, config.webhookSecret)) {
+    logger.warn("Rejected webhook request with an invalid signature");
+    return res.status(401).json({ error: "Invalid signature" });
   }
 
   const event = req.headers["x-github-event"];
+  if (!event) {
+    return res.status(400).json({ error: "Missing event header" });
+  }
+
   if (event !== "pull_request") {
-    console.log("Ignoring event:", event);
-    return res.status(200).send("Ignored");
+    logger.info(`Ignored unsupported event: ${event}`);
+    return res
+      .status(202)
+      .json({ status: "ignored", reason: "unsupported event" });
   }
 
-  const action = req.body.action;
-  if (
-    action !== "opened" &&
-    action !== "reopened" &&
-    action !== "synchronize"
-  ) {
-    console.log("Ignoring action:", action);
-    return res.status(200).send("Ignored");
+  const action = req.body?.action;
+  if (!["opened", "reopened", "synchronize"].includes(action)) {
+    logger.info(`Ignored pull request action: ${action}`);
+    return res
+      .status(202)
+      .json({ status: "ignored", reason: "unsupported action" });
   }
 
-  const pr = req.body.pull_request;
-  const repo = req.body.repository;
-  const installationId = req.body.installation.id;
+  const pr = req.body?.pull_request;
+  const repo = req.body?.repository;
+  const installationId = req.body?.installation?.id;
 
-  console.log(`Processing PR #${pr.number} in ${repo.full_name}`);
-  console.log(`Title: ${pr.title}`);
-  console.log(`Head SHA: ${pr.head.sha}`);
-  console.log(`Action: ${action}`);
+  if (!pr || !repo || !installationId) {
+    logger.warn("Webhook payload is missing pull request metadata");
+    return res.status(400).json({ error: "Invalid webhook payload" });
+  }
+
+  logger.info(`Processing PR #${pr.number} in ${repo.full_name}`, {
+    action,
+    sha: pr.head?.sha,
+  });
 
   try {
+    if (!config.githubAppId) {
+      logger.error("GITHUB_APP_ID is not configured");
+      return res.status(500).json({ error: "GitHub app is not configured" });
+    }
+
     const auth = new GitHubAppAuth(
-      process.env.GITHUB_APP_ID,
-      process.env.NODE_ENV === "production" ? null : "./private-key.pem",
+      config.githubAppId,
+      config.githubPrivateKeyPath,
     );
     const token = await auth.getInstallationToken(installationId);
-    console.log("Installation token obtained");
-
     const octokit = new Octokit({ auth: token });
+
     const diffResponse = await octokit.pulls.get({
       owner: repo.owner.login,
       repo: repo.name,
@@ -85,12 +132,10 @@ app.post("/api/webhook", async (req, res) => {
       mediaType: { format: "diff" },
     });
     const diffContent = diffResponse.data;
-    console.log(`Diff size: ${diffContent.length} characters`);
 
-    // ---- RUN ALL SCANNERS ----
     const regexFindings = scanForSecrets(diffContent);
     const entropyFindings = scanForEntropy(diffContent);
-    const depFindings = await scanDependencies(
+    const dependencyFindings = await scanDependencies(
       octokit,
       repo.owner.login,
       repo.name,
@@ -98,65 +143,41 @@ app.post("/api/webhook", async (req, res) => {
       pr.head.sha,
     );
 
-    const allFindings = [...regexFindings, ...entropyFindings, ...depFindings];
-    console.log(`Total findings: ${allFindings.length} letters`);
+    const allFindings = [
+      ...regexFindings,
+      ...entropyFindings,
+      ...dependencyFindings,
+    ];
+    logger.info(`Scan completed with ${allFindings.length} finding(s)`, {
+      pullRequest: pr.number,
+    });
 
-    // ---- POST COMMENT ----
     if (allFindings.length > 0) {
-      let commentBody = "## GitSentry Security Findings\n\n";
-
-      const secretFindings = allFindings.filter((f) => f.category === "secret");
-      const depFindingsOnly = allFindings.filter(
-        (f) => f.category === "dependency",
-      );
-
-      if (secretFindings.length > 0) {
-        commentBody += "### Secrets Detected\n\n";
-        secretFindings.forEach((f, idx) => {
-          commentBody += `**${idx + 1}. ${f.type}** (Line ${f.line} in \`${f.file || "unknown"}\`)\n`;
-          commentBody += `\`${f.content.substring(0, 100)}${f.content.length > 100 ? "..." : ""}\`\n\n`;
-        });
-      }
-
-      if (depFindingsOnly.length > 0) {
-        commentBody += "### Vulnerable Dependencies\n\n";
-        depFindingsOnly.forEach((f, idx) => {
-          const severityEmoji =
-            f.severity === "critical" || f.severity === "high"
-              ? "🔴"
-              : f.severity === "medium"
-                ? "🟡"
-                : "🟢";
-          commentBody += `${severityEmoji} **${f.package}** (${f.severity})\n`;
-          commentBody += `   - ${f.title}\n`;
-          if (f.cve && f.cve !== "N/A") commentBody += `   - CVE: ${f.cve}\n`;
-          if (f.vulnerable_versions)
-            commentBody += `   - Affected: ${f.vulnerable_versions}\n`;
-          commentBody += `   - File: \`${f.file}\`\n\n`;
-        });
-      }
-
-      commentBody += "---\n⚠️ Please fix these issues before merging.";
-
       await octokit.pulls.createReview({
         owner: repo.owner.login,
         repo: repo.name,
         pull_number: pr.number,
-        body: commentBody,
+        body: buildReviewComment(allFindings),
         event: "COMMENT",
       });
-      console.log("Review comment posted!");
-    } else {
-      console.log("No issues found, clean PR");
     }
 
-    res.status(200).send("OK");
+    return res.status(200).json({ status: "ok", findings: allFindings.length });
   } catch (error) {
-    console.error("Error processing PR:", error.message);
-    res.status(500).send("Internal error");
+    logger.error("Failed to process pull request", error.message);
+    return res.status(500).json({ error: "Internal error" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`GitSentry running on http://localhost:${PORT}`);
+app.use((err, req, res, next) => {
+  logger.error("Unhandled server error", err.message);
+  res.status(500).json({ error: "Internal server error" });
 });
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    logger.info(`GitSentry server listening on port ${PORT}`);
+  });
+}
+
+module.exports = { app };
