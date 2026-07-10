@@ -1,148 +1,113 @@
-import { useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ShieldAlert, Activity, GitBranch } from 'lucide-react';
+import { useDashboardData } from './hooks/useDashboardData';
+import { useDashboardStore } from './stores/useDashboardStore';
+import Layout from './components/Layout';
+import StatsCard from './components/StatsCard';
+import FindingsTrendChart from './components/charts/FindingsTrendChart';
+import SeverityBreakdownChart from './components/charts/SeverityBreakdownChart';
+import FindingTypesPieChart from './components/charts/FindingTypesPieChart';
+import ScansTable from './components/ScansTable';
+import FindingsTable from './components/FindingsTable';
 
-function Card({ title, value, subtitle }) {
+const queryClient = new QueryClient();
+
+function DashboardContent() {
+  const { isLoading, isError } = useDashboardData();
+  const summary = useDashboardStore(state => state.summary);
+  const findings = useDashboardStore(state => state.findings);
+  
+  if (isLoading && !summary) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="animate-pulse flex flex-col items-center">
+          <div className="w-12 h-12 border-4 border-accent-orange border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-text-secondary">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError && !summary) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <div className="bg-accent-red/10 border border-accent-red/20 p-6 rounded-xl text-center max-w-md">
+          <ShieldAlert className="w-10 h-10 text-accent-red mx-auto mb-3" />
+          <h3 className="text-lg font-medium text-text-primary">Failed to load data</h3>
+          <p className="text-sm text-text-secondary mt-2">Could not connect to the GitSentry backend. Please check if the server is running.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const criticalFindings = findings.filter(f => f.severity === 'critical').length;
+  const recentFindingsTrend = findings.length > 0 ? 5 : 0; // Mock trend for demo
+
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
-      <p className="text-sm text-slate-400">{title}</p>
-      <p className="mt-2 text-3xl font-semibold text-white">{value}</p>
-      <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden glass-panel-elevated p-8 md:p-12 rounded-3xl bg-glow-orange">
+        <div className="relative z-10 max-w-3xl">
+          <h1 className="text-4xl md:text-5xl font-bold text-text-primary tracking-tight mb-4 text-glow">
+            Security Intelligence
+          </h1>
+          <p className="text-lg text-text-secondary mb-8 max-w-2xl leading-relaxed">
+            Real-time monitoring of your pull request pipeline. Instantly catch exposed secrets and vulnerable dependencies before they reach production.
+          </p>
+        </div>
+      </section>
+
+      {/* Metrics Row */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatsCard 
+          title="Total Scans" 
+          value={summary?.totalScans || 0} 
+          subtitle="All-time pull requests analyzed"
+          icon={Activity}
+        />
+        <StatsCard 
+          title="Active Findings" 
+          value={summary?.totalFindings || 0} 
+          subtitle={`${criticalFindings} critical vulnerabilities`}
+          icon={ShieldAlert}
+          trend={recentFindingsTrend}
+        />
+        <StatsCard 
+          title="Tracked Repos" 
+          value={summary?.repositories || 0} 
+          subtitle="Secured by GitSentry"
+          icon={GitBranch}
+        />
+      </section>
+
+      {/* Charts Row */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <FindingTypesPieChart />
+        </div>
+        <div className="lg:col-span-1">
+          <SeverityBreakdownChart />
+        </div>
+        <div className="lg:col-span-1">
+          <FindingsTrendChart />
+        </div>
+      </section>
+
+      {/* Tables Row */}
+      <section className="space-y-8">
+        <FindingsTable />
+        <ScansTable />
+      </section>
     </div>
   );
 }
 
 export default function App() {
-  const [summary, setSummary] = useState(null);
-  const [scans, setScans] = useState([]);
-  const [findings, setFindings] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        const [summaryResponse, scansResponse, findingsResponse] =
-          await Promise.all([
-            fetch("/api/dashboard/summary"),
-            fetch("/api/dashboard/scans"),
-            fetch("/api/dashboard/findings"),
-          ]);
-
-        const summaryData = await summaryResponse.json();
-        const scansData = await scansResponse.json();
-        const findingsData = await findingsResponse.json();
-
-        setSummary(summaryData);
-        setScans(scansData);
-        setFindings(findingsData);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadDashboard();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 p-8 text-white">
-        Loading dashboard...
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 p-6 text-white sm:p-8">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-8 rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-800 p-8 shadow-2xl shadow-black/20">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-400">
-            GitSentry
-          </p>
-          <h1 className="mt-3 text-4xl font-semibold">
-            Security review dashboard
-          </h1>
-          <p className="mt-3 max-w-2xl text-slate-400">
-            Monitor pull-request scans, view findings, and keep your GitHub
-            security workflow visible in one place.
-          </p>
-        </header>
-
-        <section className="mb-8 grid gap-4 md:grid-cols-3">
-          <Card
-            title="Total scans"
-            value={summary?.totalScans ?? 0}
-            subtitle="Recorded webhook runs"
-          />
-          <Card
-            title="Findings"
-            value={summary?.totalFindings ?? 0}
-            subtitle="Secrets and dependency alerts"
-          />
-          <Card
-            title="Tracked repos"
-            value={summary?.repositories ?? 0}
-            subtitle={`Latest status: ${summary?.latestStatus ?? "idle"}`}
-          />
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold">Recent scans</h2>
-              <span className="text-sm text-slate-500">
-                Live from your webhook pipeline
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-800 text-left text-slate-400">
-                    <th className="pb-3">Repo</th>
-                    <th className="pb-3">PR</th>
-                    <th className="pb-3">Status</th>
-                    <th className="pb-3">Findings</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scans.map((scan) => (
-                    <tr
-                      key={scan.id}
-                      className="border-b border-slate-800/70 text-slate-300"
-                    >
-                      <td className="py-3">{scan.repository}</td>
-                      <td className="py-3">#{scan.pullRequest}</td>
-                      <td className="py-3">{scan.status}</td>
-                      <td className="py-3">{scan.findingsCount ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-lg shadow-black/20">
-            <h2 className="mb-4 text-xl font-semibold">Latest findings</h2>
-            <div className="space-y-3">
-              {findings.map((finding) => (
-                <div
-                  key={finding.id}
-                  className="rounded-xl border border-slate-800 bg-slate-950/80 p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-white">{finding.title}</p>
-                    <span className="rounded-full bg-slate-800 px-2 py-1 text-xs uppercase text-slate-300">
-                      {finding.severity}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {finding.type} • {finding.file}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <Layout>
+        <DashboardContent />
+      </Layout>
+    </QueryClientProvider>
   );
 }
