@@ -11,6 +11,7 @@ const { verifyWebhookSignature } = require("./lib/security");
 const logger = require("./lib/logger");
 const config = require("./config");
 const { createDashboardStore } = require("./dashboard/store");
+const { getRemediation } = require("./lib/llm");
 require("dotenv").config();
 
 const app = express();
@@ -41,7 +42,11 @@ function buildReviewComment(findings) {
     secretFindings.forEach((finding, index) => {
       commentBody += `**${index + 1}. ${finding.type}** (Line ${finding.line} in \`${finding.file || "unknown"}\`)\n`;
       const snippet = finding.content ? finding.content.substring(0, 100) : "";
-      commentBody += `\`${snippet}${snippet.length === 100 ? "..." : ""}\`\n\n`;
+      commentBody += `\`${snippet}${snippet.length === 100 ? "..." : ""}\`\n`;
+      if (finding.remediation) {
+        commentBody += `💡 **AI Remediation Suggestion:** ${finding.remediation}\n`;
+      }
+      commentBody += "\n";
     });
   }
 
@@ -62,7 +67,11 @@ function buildReviewComment(findings) {
       if (finding.vulnerable_versions) {
         commentBody += `   - Affected: ${finding.vulnerable_versions}\n`;
       }
-      commentBody += `   - File: \`${finding.file || "unknown"}\`\n\n`;
+      commentBody += `   - File: \`${finding.file || "unknown"}\`\n`;
+      if (finding.remediation) {
+        commentBody += `   - 💡 **AI Remediation Suggestion:** ${finding.remediation}\n`;
+      }
+      commentBody += "\n";
     });
   }
 
@@ -189,6 +198,12 @@ app.post("/api/webhook", async (req, res) => {
     });
 
     if (allFindings.length > 0) {
+      await Promise.all(
+        allFindings.map(async (finding) => {
+          finding.remediation = await getRemediation(finding);
+        }),
+      );
+
       await octokit.pulls.createReview({
         owner: repo.owner.login,
         repo: repo.name,
