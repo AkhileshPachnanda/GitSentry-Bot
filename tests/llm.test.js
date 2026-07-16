@@ -59,7 +59,8 @@ describe("LLM Remediation Helper", () => {
     
     const body = JSON.parse(calledOptions.body);
     expect(body.model).toBe("llama-3.1-8b-instant");
-    expect(body.messages[0].content).toContain("Package: lodash");
+    const userMsg = body.messages.find(m => m.role === "user").content;
+    expect(userMsg).toContain("Package: lodash");
   });
 
   test("uses Ollama local API when GROQ_API_KEY is NOT configured", async () => {
@@ -94,7 +95,8 @@ describe("LLM Remediation Helper", () => {
     
     const body = JSON.parse(calledOptions.body);
     expect(body.model).toBe("llama3");
-    expect(body.messages[0].content).toContain("Secret Type: Slack Webhook URL");
+    const userMsg = body.messages.find(m => m.role === "user").content;
+    expect(userMsg).toContain("Secret Type: Slack Webhook URL");
   });
 
   test("handles unknown finding categories gracefully", async () => {
@@ -123,7 +125,8 @@ describe("LLM Remediation Helper", () => {
     
     const [, calledOptions] = mockFetch.mock.calls[0];
     const body = JSON.parse(calledOptions.body);
-    expect(body.messages[0].content).toContain("Type: custom-vulnerability");
+    const userMsg = body.messages.find(m => m.role === "user").content;
+    expect(userMsg).toContain("Type: custom-vulnerability");
   });
 
   test("falls back to generic dependency suggestion on API error or fail (missing vulnerable_versions)", async () => {
@@ -190,7 +193,8 @@ describe("LLM Remediation Helper", () => {
     await getRemediation(finding);
     const [, calledOptions] = mockFetch.mock.calls[0];
     const body = JSON.parse(calledOptions.body);
-    expect(body.messages[0].content).toContain("Details: custom message");
+    const userMsg = body.messages.find(m => m.role === "user").content;
+    expect(userMsg).toContain("Details: custom message");
 
     mockFetch.mockClear();
 
@@ -208,7 +212,8 @@ describe("LLM Remediation Helper", () => {
     await getRemediation(finding2);
     const [, calledOptions2] = mockFetch.mock.calls[0];
     const body2 = JSON.parse(calledOptions2.body);
-    expect(body2.messages[0].content).toContain('Details: {"category":"custom"}');
+    const userMsg2 = body2.messages.find(m => m.role === "user").content;
+    expect(userMsg2).toContain('Details: {"category":"custom"}');
 
     mockFetch.mockClear();
 
@@ -226,7 +231,8 @@ describe("LLM Remediation Helper", () => {
     await getRemediation(finding3);
     const [, calledOptions3] = mockFetch.mock.calls[0];
     const body3 = JSON.parse(calledOptions3.body);
-    expect(body3.messages[0].content).toContain('Type: Security Finding');
+    const userMsg3 = body3.messages.find(m => m.role === "user").content;
+    expect(userMsg3).toContain('Type: Security Finding');
   });
 
   test("config helper getNumberEnv handles non-finite inputs", () => {

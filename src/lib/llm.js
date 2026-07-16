@@ -4,27 +4,18 @@ const logger = require("./logger");
 async function getRemediation(finding) {
   let prompt = "";
   if (finding.category === "dependency") {
-    prompt = `Generate an extremely concise, actionable fix (maximum 2 sentence) for this vulnerability:
-Package: ${finding.package}
+    prompt = `Package: ${finding.package}
 Vulnerability: ${finding.title}
-Severity: ${finding.severity}
-Affected Versions: ${finding.vulnerable_versions || "N/A"}
-CVE: ${finding.cve || "N/A"}
-File: ${finding.file || "unknown"}
-Respond ONLY with the direct, crisp fix. No explanations, no introductory text, no conversational filler.`;
+Affected: ${finding.vulnerable_versions || "N/A"}
+CVE: ${finding.cve || "N/A"}`;
   } else if (finding.category === "secret") {
     const snippet = finding.content ? finding.content.substring(0, 100) : "";
-    prompt = `Generate an extremely concise, actionable fix (maximum 2 sentence) for this exposed credential/secret:
-Secret Type: ${finding.type}
+    prompt = `Secret Type: ${finding.type}
 File: ${finding.file || "unknown"}
-Line: ${finding.line || "unknown"}
-Snippet: ${snippet}
-Respond ONLY with the direct, crisp fix. No explanations, no introductory text, no conversational filler.`;
+Snippet: ${snippet}`;
   } else {
-    prompt = `Generate an extremely concise, actionable fix (maximum 2 sentence) for this vulnerability:
-Type: ${finding.type || finding.category || "Security Finding"}
-Details: ${finding.title || finding.message || JSON.stringify(finding)}
-Respond ONLY with the direct, crisp fix. No explanations, no introductory text, no conversational filler.`;
+    prompt = `Type: ${finding.type || finding.category || "Security Finding"}
+Details: ${finding.title || finding.message || JSON.stringify(finding)}`;
   }
 
   const useGroq = !!config.groqApiKey;
@@ -46,11 +37,15 @@ Respond ONLY with the direct, crisp fix. No explanations, no introductory text, 
     model,
     messages: [
       {
+        role: "system",
+        content: "You are a secure coding assistant. Your task is to provide an extremely concise, single-sentence remediation instruction for the security finding. Do not explain the vulnerability, do not write code blocks, do not show example code, and do not provide background information. Output ONLY the single actionable step to fix it.",
+      },
+      {
         role: "user",
         content: prompt,
       },
     ],
-    temperature: 0.2,
+    temperature: 0.1,
   };
 
   try {
