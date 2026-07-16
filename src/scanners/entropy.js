@@ -92,4 +92,4 @@ function scanForEntropy(diffContent) {
   return findings;
 }
 
-module.exports = { scanForEntropy };
+module.exports = { scanForEntropy, calculateEntropy };
