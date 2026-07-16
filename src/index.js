@@ -44,7 +44,7 @@ function buildReviewComment(findings) {
       const snippet = finding.content ? finding.content.substring(0, 100) : "";
       commentBody += `\`${snippet}${snippet.length === 100 ? "..." : ""}\`\n`;
       if (finding.remediation) {
-        commentBody += `💡 **AI Remediation Suggestion:** ${finding.remediation}\n`;
+        commentBody += `####💡 **I Suggestion:** ${finding.remediation}\n`;
       }
       commentBody += "\n";
     });
@@ -69,7 +69,7 @@ function buildReviewComment(findings) {
       }
       commentBody += `   - File: \`${finding.file || "unknown"}\`\n`;
       if (finding.remediation) {
-        commentBody += `   - 💡 **AI Remediation Suggestion:** ${finding.remediation}\n`;
+        commentBody += `####💡 **AI Suggestion:** ${finding.remediation}\n`;
       }
       commentBody += "\n";
     });

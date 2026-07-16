@@ -19,9 +19,9 @@ File: ${finding.file || "unknown"}
 Line: ${finding.line || "unknown"}
 Snippet: ${snippet}`;
   } else {
-    prompt = `Generate a short, actionable fix for this vulnerability:
+    prompt = `Generate a very short, actionable fix for this vulnerability:
 Type: ${finding.type || finding.category || "Security Finding"}
-Details: ${finding.title || finding.message || JSON.stringify(finding)}`;
+Details: ${finding.title || finding.message || JSON.stringify(finding)}, keep it very short and easy to understandbe precise`;
   }
 
   const useGroq = !!config.groqApiKey;
