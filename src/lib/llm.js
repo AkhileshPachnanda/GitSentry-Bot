@@ -4,24 +4,27 @@ const logger = require("./logger");
 async function getRemediation(finding) {
   let prompt = "";
   if (finding.category === "dependency") {
-    prompt = `Generate a short, actionable fix for this vulnerability:
+    prompt = `Generate an extremely concise, actionable fix (maximum 2 sentence) for this vulnerability:
 Package: ${finding.package}
 Vulnerability: ${finding.title}
 Severity: ${finding.severity}
 Affected Versions: ${finding.vulnerable_versions || "N/A"}
 CVE: ${finding.cve || "N/A"}
-File: ${finding.file || "unknown"}`;
+File: ${finding.file || "unknown"}
+Respond ONLY with the direct, crisp fix. No explanations, no introductory text, no conversational filler.`;
   } else if (finding.category === "secret") {
     const snippet = finding.content ? finding.content.substring(0, 100) : "";
-    prompt = `Generate a short, actionable fix for this vulnerability:
+    prompt = `Generate an extremely concise, actionable fix (maximum 2 sentence) for this exposed credential/secret:
 Secret Type: ${finding.type}
 File: ${finding.file || "unknown"}
 Line: ${finding.line || "unknown"}
-Snippet: ${snippet}`;
+Snippet: ${snippet}
+Respond ONLY with the direct, crisp fix. No explanations, no introductory text, no conversational filler.`;
   } else {
-    prompt = `Generate a very short, actionable fix for this vulnerability:
+    prompt = `Generate an extremely concise, actionable fix (maximum 2 sentence) for this vulnerability:
 Type: ${finding.type || finding.category || "Security Finding"}
-Details: ${finding.title || finding.message || JSON.stringify(finding)}, keep it very short and easy to understandbe precise`;
+Details: ${finding.title || finding.message || JSON.stringify(finding)}
+Respond ONLY with the direct, crisp fix. No explanations, no introductory text, no conversational filler.`;
   }
 
   const useGroq = !!config.groqApiKey;
